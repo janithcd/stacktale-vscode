@@ -1,0 +1,99 @@
+{
+  "name": "stacktale-vscode",
+  "displayName": "stacktale",
+  "description": "Surface errors-ai.log in VS Code — AI-ready Java error reports, with jump-to-culprit and copy-for-AI.",
+  "version": "0.1.0",
+  "publisher": "gabrielbbaldez",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stacktale/stacktale-vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "stacktale",
+    "logging",
+    "java",
+    "ai",
+    "errors"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/errors-ai.log"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "stacktale",
+          "title": "stacktale",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "stacktale": [
+        {
+          "id": "stacktale.reports",
+          "name": "Error reports"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "stacktale.refresh",
+        "title": "Refresh",
+        "category": "stacktale",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "stacktale.copyForAI",
+        "title": "Copy report for AI",
+        "category": "stacktale",
+        "icon": "$(copy)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "stacktale.refresh",
+          "when": "view == stacktale.reports",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "stacktale.copyForAI",
+          "when": "view == stacktale.reports && viewItem == report",
+          "group": "inline"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "stacktale",
+      "properties": {
+        "stacktale.file": {
+          "type": "string",
+          "default": "",
+          "description": "Path to errors-ai.log, relative to the workspace root. Empty = auto-detect the first one in the workspace."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "tsc -p ./ && node --test out/test/parser.test.js",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  }
+}
