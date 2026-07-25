@@ -13,7 +13,7 @@ now for VS Code and the AI-native editors built on it (Cursor, Windsurf).
 
 - **Error reports view** — a **stacktale** view in the activity bar lists every report in
   `errors-ai.log`, newest first, with the root-cause headline and timestamp. It refreshes
-  live as new errors land (and across rotation).
+  live as new errors land.
 - **Jump to the culprit** — click a report to open the exact `File.java:line` stacktale
   marked as *your* code, not the framework's.
 - **Copy report for AI** — the inline copy action puts the whole report block on your
