@@ -25,8 +25,18 @@ const START = "━━━ ERROR #";
 const END = "━━━ END #";
 // id + timestamp from "━━━ ERROR #a1b2 ━━━ 2026-07-10 20:16:40.412 thread=… ━━━"
 const HEADER = /^━━━ ERROR #(\S+) ━━━ (.+?) thread=/;
-// a frame carrying a source location: "…(PaymentService.java:44)"
-const FRAME = /\(([\w$]+\.(?:java|kt|groovy|scala)):(\d+)\)/;
+// A frame carrying a source location: "…(PaymentService.java:44)".
+//
+// The file part accepts anything that isn't whitespace, a colon or a paren, so Unicode
+// source names (`Ação.java`) match — `\w` is ASCII-only in JS without the `u` flag, and a
+// frame that doesn't match leaves the report with no culprit at all.
+//
+// `kts` is listed before `kt` on purpose: with `kt` first the engine matches `.kt`, then
+// needs `:` and finds `s`, and the whole frame fails to parse.
+//
+// The line number allows a leading `-`. The JVM writes -1 for a class compiled without
+// `-g:lines` and -2 for a native method, and the library renders it verbatim.
+const FRAME = /\(([^\s:()]+\.(?:java|kts|kt|groovy|scala)):(-?\d+)\)/;
 
 export function parseReports(content: string): StReport[] {
   const reports: StReport[] = [];
@@ -42,6 +52,7 @@ export function parseReports(content: string): StReport[] {
       continue;
     }
     const block: string[] = [lines[i]];
+    let complete = false;
     let j = i + 1;
     while (j < lines.length) {
       const bl = lines[j];
@@ -50,14 +61,20 @@ export function parseReports(content: string): StReport[] {
       }
       block.push(bl);
       if (bl.startsWith(END)) {
+        complete = true;
         j++;
         break;
       }
       j++;
     }
-    const report = parseBlock(block);
-    if (report) {
-      reports.push(report);
+    // FORMAT.md: a block whose closing line is absent is incomplete and MUST be discarded
+    // rather than shown as a partial entry. The writer appends the block separately from
+    // the header, so a read can land mid-write and catch exactly this.
+    if (complete) {
+      const report = parseBlock(block);
+      if (report) {
+        reports.push(report);
+      }
     }
     i = j;
   }
@@ -74,18 +91,31 @@ function parseBlock(block: string[]): StReport | undefined {
   const headline = block.length > 1 ? block[1].trim() : "";
 
   let culprit: StFrame | undefined;
+  let markedFrameSeen = false;
   const frames: StFrame[] = [];
   for (const bl of block) {
     const fm = FRAME.exec(bl);
-    if (fm) {
-      const frame: StFrame = { file: fm[1], line: parseInt(fm[2], 10), text: bl.trim() };
-      frames.push(frame);
-      if (!culprit && (bl.includes("← YOUR CODE") || bl.includes("← culprit"))) {
-        culprit = frame;
-      }
+    if (!fm) {
+      continue;
+    }
+    const marked = bl.includes("← YOUR CODE") || bl.includes("← culprit");
+    if (marked) {
+      markedFrameSeen = true;
+    }
+    const line = parseInt(fm[2], 10);
+    if (line <= 0) {
+      continue; // no source position — nothing to navigate to
+    }
+    const frame: StFrame = { file: fm[1], line, text: bl.trim() };
+    frames.push(frame);
+    if (!culprit && marked) {
+      culprit = frame;
     }
   }
-  if (!culprit && frames.length > 0) {
+  // Fall back to the first frame ONLY when the block marked none. When a frame WAS marked
+  // but had no usable position, jumping to some other frame is worse than not jumping: for
+  // a wrapped exception that other frame is the `wrapped by:` line, in a different class.
+  if (!culprit && !markedFrameSeen && frames.length > 0) {
     culprit = frames[0];
   }
   return { id, timestamp, headline, culprit, frames, block: block.join("\n") };

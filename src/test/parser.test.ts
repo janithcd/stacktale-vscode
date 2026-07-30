@@ -64,3 +64,61 @@ test("keeps reports that do not contain a source frame", () => {
   assert.equal(reports[0].frames.length, 0);
   assert.equal(reports[0].culprit, undefined);
 });
+
+// The three bugs from #5, mirroring the fix landed in the JetBrains plugin (its PR #11).
+// The two parsers are deliberate twins; these cases must behave identically in both.
+
+test("discards a truncated block and still parses the next complete one", () => {
+  const truncated =
+    "━━━ ERROR #dead ━━━ 2026-07-10 20:18:00.000 thread=main ━━━\n" +
+    "RuntimeException: boom\n" +
+    "at Svc.run(Svc.java:12) ← YOUR CODE\n";
+
+  assert.equal(parseReports(truncated).length, 0);
+
+  const followed =
+    truncated +
+    "━━━ ERROR #beef ━━━ 2026-07-10 20:19:00.000 thread=main ━━━\n" +
+    "RuntimeException: complete\n" +
+    "at GoodService.run(GoodService.java:7) ← YOUR CODE\n" +
+    "━━━ END #beef ━━━\n";
+
+  const reports = parseReports(followed);
+  assert.equal(reports.length, 1);
+  assert.equal(reports[0].id, "beef");
+});
+
+test("a marked frame with no line number does not fall back to another file", () => {
+  // -1 is what the JVM reports for a class compiled without -g:lines
+  const content = [
+    "━━━ ERROR #nodebug ━━━ 2026-07-10 20:20:00.000 thread=main ━━━",
+    "IllegalStateException: wrapped failure",
+    "wrapped by: CheckoutException at CheckoutService.confirm(CheckoutService.java:88)",
+    "at OrderService.confirm(OrderService.java:-1) ← YOUR CODE",
+    "━━━ END #nodebug ━━━",
+  ].join("\n");
+
+  const r = parseReports(content)[0];
+  assert.equal(r.culprit, undefined);
+  assert.deepEqual(r.frames.map((f) => f.file), ["CheckoutService.java"]);
+});
+
+test("parses unicode filenames and .kts frames", () => {
+  const content = [
+    "━━━ ERROR #unicode ━━━ 2026-07-10 20:22:00.000 thread=main ━━━",
+    "RuntimeException: unicode filename",
+    "at Ação.run(Ação.java:23) ← YOUR CODE",
+    "━━━ END #unicode ━━━",
+    "━━━ ERROR #script ━━━ 2026-07-10 20:23:00.000 thread=main ━━━",
+    "RuntimeException: kotlin script",
+    "at 構建.run(構建.kts:9) ← YOUR CODE",
+    "━━━ END #script ━━━",
+  ].join("\n");
+
+  const reports = parseReports(content);
+  assert.equal(reports.length, 2);
+  assert.equal(reports[0].culprit?.file, "Ação.java");
+  assert.equal(reports[0].culprit?.line, 23);
+  assert.equal(reports[1].culprit?.file, "構建.kts");
+  assert.equal(reports[1].culprit?.line, 9);
+});
